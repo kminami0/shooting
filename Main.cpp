@@ -73,7 +73,7 @@ public:
         circle = Circle(pos, 30.0);
     }
     //自機（円）を描画
-    void draw() {
+    void draw() const{
         circle.draw(Color(0, 0, 255));
     }
 };
@@ -121,7 +121,7 @@ public:
         circle = Circle(pos, 30.0);
     }
     //敵を描画
-    void draw() {
+    void draw() const{
         if (kind == 1) {
             circle.draw(Color(255, 0, 0));
         }
@@ -162,7 +162,7 @@ public:
     }
 
     //敵ショットの描画
-    void draw() {
+    void draw() const{
         circle.draw(Color(0, 0, 0));
     }
 };
@@ -211,7 +211,7 @@ public:
         }
     }
 
-    void draw() {
+    void draw() const{
         for (auto i : step(enemies.size())) {
             enemies[i].draw();
         }
@@ -259,7 +259,7 @@ public:
     }
 
     //自機ショットの描画
-    void draw() {
+    void draw() const{
         circle.draw(Color(255, 255, 255));
     }
 };
@@ -279,7 +279,7 @@ public:
         bullets.remove_if([](Bullet b) {return b.pos.y < 0; });
     }
 
-    void draw() {
+    void draw() const{
         for (auto i : step(bullets.size())) {
             bullets[i].draw();
         }
@@ -397,42 +397,24 @@ void CollisionDetection(EnemyManager* enemyManager, BulletManager* bulletManager
 
 // ゲームシーン
 class Game : public App::Scene {
+public:
+    Player player;
+    EnemyManager enemyManager;
+    BulletManager bulletManager;
+    double enemySpawnTimer = 0; //敵の発生間隔タイマー
+    Effect effect;
+    bool bossAppear = false;
+    bool isPause = false;
+
     // コンストラクタ（必ず実装）
     Game(const InitData& init)
         : IScene(init)
     {
-
+        stopwatch.restart();
     }
-};
 
-void Main()
-{   
-    // シーンマネージャーを作成
-    App manager;
-
-    // タイトルシーン（名前は U"Title"）を登録
-    manager.add<Title>(U"Title");
-
-    // ゲームシーン（名前は U"Game"）を登録
-    manager.add<Game>(U"Game");
-
-    Player player;
-    EnemyManager enemyManager;
-    BulletManager bulletManager;
-    stopwatch.restart();
-    double enemySpawnTimer = 0; //敵の発生間隔タイマー
-    Scene::SetBackground(ColorF(0.3, 0.6, 1.0)); //背景色
-    Effect effect;
-    bool bossAppear = false;
-
-    while (System::Update()) {
-        ClearPrint();
-        //Print << U"enemies: " << enemyManager.enemies.size(); //現在の敵の数の表示
-        Print << U"score: " << score; //スコア表示
-        Print << U"high score: " << highscore; //ハイスコア表示
-        Print << U"time: " << stopwatch.sF();
-        //Print << U"enemy spawn time: " << enemySpawnTime;
-        //Print << U"enemy shot timer: " << enemyShotTimer;
+    void update() override
+    {
         //Rキーを押したらリスタート
         if (KeyR.down()) {
             gameover = false;
@@ -446,40 +428,51 @@ void Main()
             stopwatch.restart();
             bossAppear = false;
         }
+
+        //スペースキーを押したらポーズ<->ポーズ解除
+        if (KeySpace.down()) {
+            isPause = !isPause;
+        }
+        if (isPause) {
+            stopwatch.pause();
+            return;
+        }
+        if (stopwatch.isPaused() && !gameclear) {
+            stopwatch.resume();
+        }
         //ゲームオーバー
         if (gameover) {
-            Print << U"Game Over!";
-            continue;
+            stopwatch.pause();
+            return;
         }
+
         //ゲームクリア
         if (gameclear) {
-            Print << U"Game Clear!";
             enemyManager.enemies.clear();
             bulletManager.bullets.clear();
             enemyManager.enemybullets.clear();
             stopwatch.pause();
-            continue;
         }
+
         //ボス出現
-        if (stopwatch.sF() > 30 && !bossAppear) {
-            Enemy boss(Vec2(400, 100), 4, 10);
+        if (stopwatch.sF() > 5 && !bossAppear) {
+            Enemy boss(Vec2(400, 100), 4, 5);
             boss.setPlayerPtr(&player);//ポインタを入れる
             enemyManager.add(boss);
             bossAppear = true;
         }
-        player.draw();
+
         player.update();
         enemyManager.update();
-        enemyManager.draw();
         bulletManager.update();
-        bulletManager.draw();
         CollisionDetection(&enemyManager, &bulletManager, &player, &effect);
         enemySpawnTimer += Scene::DeltaTime();
         enemyShotTimer += Scene::DeltaTime();
+
         //敵の発生
         if (enemySpawnTimer > enemySpawnTime) {
             //ランダムな位置に敵を作成
-            Enemy enemy(Vec2(Random(Scene::Width()), Random(Scene::Height())), Random(1,3), 1);
+            Enemy enemy(Vec2(Random(Scene::Width()), Random(Scene::Height())), Random(1, 3), 1);
             if (!enemy.circle.intersects(player.circle)) {
                 enemy.setPlayerPtr(&player);//ポインタを入れる
                 enemyManager.add(enemy);
@@ -504,6 +497,53 @@ void Main()
             bulletManager.add(bullet);
         }
         effect.update();
+    }
+
+    void draw() const override
+    {
+        Scene::SetBackground(ColorF(0.3, 0.6, 1.0)); //背景色
+        ClearPrint();
+        //Print << U"enemies: " << enemyManager.enemies.size(); //現在の敵の数の表示
+        Print << U"score: " << score; //スコア表示
+        Print << U"high score: " << highscore; //ハイスコア表示
+        Print << U"time: " << stopwatch.sF();
+        //Print << U"enemy spawn time: " << enemySpawnTime;
+        //Print << U"enemy shot timer: " << enemyShotTimer;
+        
+        //ゲームオーバー
+        if (gameover) {
+            Print << U"Game Over!";
+        }
+
+        //ゲームクリア
+        if (gameclear) {
+            Print << U"Game Clear!";
+            return;
+        }
+
+        player.draw();
+        enemyManager.draw();
+        bulletManager.draw();
+    }
+};
+
+void Main()
+{   
+    // シーンマネージャーを作成
+    App manager;
+
+    // タイトルシーン（名前は U"Title"）を登録
+    manager.add<Title>(U"Title");
+
+    // ゲームシーン（名前は U"Game"）を登録
+    manager.add<Game>(U"Game");
+
+    while (System::Update()) {
+        // 現在のシーンを実行
+        if (!manager.update())
+        {
+            break;
+        }
     }
 
 }
