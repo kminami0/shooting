@@ -1,6 +1,15 @@
 ﻿#include <Siv3D.hpp> // OpenSiv3D v0.4.3
 
-using App = SceneManager<String>;
+struct GameData
+{
+    int32 score = 0;
+    int32 highscore = 0;
+};
+
+using App = SceneManager<String, GameData>;
+
+bool gameover = false; //ゲームオーバー判定
+bool gameclear = false; //ゲームクリア判定
 
 // タイトルシーン
 class Title : public App::Scene
@@ -11,7 +20,10 @@ public:
     Title(const InitData& init)
         : IScene(init)
     {
-
+        gameover = false;
+        gameclear = false;
+        ClearPrint();
+        Print << U"high score: " << getData().highscore; //ハイスコア表示
     }
 
     // 更新関数
@@ -30,14 +42,10 @@ public:
     {
         Scene::SetBackground(ColorF(0.3, 0.4, 0.5));
 
-        FontAsset(U"TitleFont")(U"My Game").drawAt(400, 100);
-
-        Circle(Cursor::Pos(), 50).draw(Palette::Orange);
+        FontAsset(U"BigFont")(U"Shooting Game").drawAt(400, 100);
+        FontAsset(U"BigFont")(U"Click to start").drawAt(400, 300);
     }
 };
-
-bool gameover = false; //ゲームオーバー判定
-bool gameclear = false; //ゲームクリア判定
 
 //自機
 class Player {
@@ -45,10 +53,14 @@ public:
     Vec2 pos;
     const double speed = 5; //自機のスピード
     Circle circle;
+    int32 life;
+    bool invincible;
 
     Player() :
         pos(320, 240),
-        circle(pos, 30)
+        circle(pos, 30),
+        life(3),
+        invincible(false)
     {
 
     }
@@ -169,6 +181,8 @@ public:
 
 double enemyShotTime = 0.5; //敵ショットの間隔
 double enemyShotTimer = 0; //敵ショットの間隔タイマー
+double invincibleTime = 2.0; //無敵時間
+double invincibleTimer = 0; //無敵時間タイマー
 
 class EnemyManager {
 public:
@@ -290,9 +304,7 @@ public:
     }
 };
 
-int32 score = 0; //現在のスコア
 double enemySpawnTime = 2; //敵の発生間隔
-int32 highscore = 0; //ハイスコア
 
 struct Particle
 {
@@ -331,13 +343,21 @@ struct Spark : IEffect
 };
 
 //衝突判定
-void CollisionDetection(EnemyManager* enemyManager, BulletManager* bulletManager, Player* player, Effect* effect) {
+void CollisionDetection(EnemyManager* enemyManager, BulletManager* bulletManager, Player* player, Effect* effect, int32* score, int32* highscore) {
     if (enemyManager->enemies.isEmpty()) {
         return;
     }
+    //敵と自機の衝突判定
     for (auto it = enemyManager->enemies.begin(); it != enemyManager->enemies.end();) {
+        if (player->invincible) {
+            break;
+        }
         if ((it->circle).intersects(player->circle)) {
-            gameover = true;
+            player->life--;
+            player->invincible = true;
+            if (player->life <= 0) {
+                gameover = true;
+            }
             break;
         }
         else {
@@ -365,12 +385,12 @@ void CollisionDetection(EnemyManager* enemyManager, BulletManager* bulletManager
             }
             if (hit) {
                 if (it->kind == 4) {
-                    score += 100;
+                    *score += 100;
                     gameclear = true;
                 }
                 it = enemyManager->enemies.erase(it);
-                score++;
-                highscore = Max(highscore, score);
+                *score += 1;
+                *highscore = Max(*highscore, *score);
                 enemySpawnTime *= 0.99;
                 hit = false;
             }
@@ -384,8 +404,17 @@ void CollisionDetection(EnemyManager* enemyManager, BulletManager* bulletManager
     }
     //敵ショットと自機の衝突判定
     for (auto it = enemyManager->enemybullets.begin(); it != enemyManager->enemybullets.end();) {
+        if (player->invincible) {
+            break;
+        }
         if (it->circle.intersects(player->circle)) {
-            gameover = true;
+            player->life -= 1;
+            //エフェクト
+            effect->add<Spark>(player->pos);
+            player->invincible = true;
+            if (player->life <= 0) {
+                gameover = true;
+            }
             break;
         }
         else {
@@ -419,7 +448,7 @@ public:
         if (KeyR.down()) {
             gameover = false;
             gameclear = false;
-            score = 0;
+            getData().score = 0;
             enemySpawnTime = 2;
             enemyManager.enemies.clear();
             bulletManager.bullets.clear();
@@ -427,6 +456,7 @@ public:
             player.pos = Vec2(400, 300);
             stopwatch.restart();
             bossAppear = false;
+            player.life = 3;
         }
 
         //スペースキーを押したらポーズ<->ポーズ解除
@@ -437,12 +467,15 @@ public:
             stopwatch.pause();
             return;
         }
-        if (stopwatch.isPaused() && !gameclear) {
+        if (stopwatch.isPaused() && !gameclear && !gameover) {
             stopwatch.resume();
         }
         //ゲームオーバー
         if (gameover) {
             stopwatch.pause();
+            if (MouseL.down()) {
+                changeScene(U"Title");
+            }
             return;
         }
 
@@ -452,11 +485,14 @@ public:
             bulletManager.bullets.clear();
             enemyManager.enemybullets.clear();
             stopwatch.pause();
+            if (MouseL.down()) {
+                changeScene(U"Title");
+            }
         }
 
         //ボス出現
-        if (stopwatch.sF() > 5 && !bossAppear) {
-            Enemy boss(Vec2(400, 100), 4, 5);
+        if (stopwatch.sF() > 25 && !bossAppear) {
+            Enemy boss(Vec2(400, 100), 4, 10);
             boss.setPlayerPtr(&player);//ポインタを入れる
             enemyManager.add(boss);
             bossAppear = true;
@@ -465,9 +501,18 @@ public:
         player.update();
         enemyManager.update();
         bulletManager.update();
-        CollisionDetection(&enemyManager, &bulletManager, &player, &effect);
+        CollisionDetection(&enemyManager, &bulletManager, &player, &effect, &getData().score, &getData().highscore);
         enemySpawnTimer += Scene::DeltaTime();
         enemyShotTimer += Scene::DeltaTime();
+        if (player.invincible) {
+            invincibleTimer += Scene::DeltaTime();
+        }
+
+        //無敵解除
+        if (invincibleTimer > invincibleTime) {
+            player.invincible = false;
+            invincibleTimer = 0;
+        }
 
         //敵の発生
         if (enemySpawnTimer > enemySpawnTime) {
@@ -504,31 +549,39 @@ public:
         Scene::SetBackground(ColorF(0.3, 0.6, 1.0)); //背景色
         ClearPrint();
         //Print << U"enemies: " << enemyManager.enemies.size(); //現在の敵の数の表示
-        Print << U"score: " << score; //スコア表示
-        Print << U"high score: " << highscore; //ハイスコア表示
+        Print << U"score: " << getData().score; //スコア表示
+        Print << U"high score: " << getData().highscore; //ハイスコア表示
         Print << U"time: " << stopwatch.sF();
+        Print << U"life: " << player.life; //残機表示
         //Print << U"enemy spawn time: " << enemySpawnTime;
         //Print << U"enemy shot timer: " << enemyShotTimer;
-        
-        //ゲームオーバー
-        if (gameover) {
-            Print << U"Game Over!";
-        }
+       
 
         //ゲームクリア
         if (gameclear) {
-            Print << U"Game Clear!";
+            FontAsset(U"BigFont")(U"Game Clear!").drawAt(400, 250);
+            FontAsset(U"BigFont")(U"Click to back to title").drawAt(400, 350);
             return;
         }
 
         player.draw();
         enemyManager.draw();
         bulletManager.draw();
+
+        //ゲームオーバー
+        if (gameover) {
+            FontAsset(U"BigFont")(U"Game Over!").drawAt(400, 250);
+            FontAsset(U"BigFont")(U"Click to back to title").drawAt(400, 350);
+            FontAsset(U"BigFont")(U"Press R to retry").drawAt(400, 450);
+        }
     }
 };
 
 void Main()
 {   
+    FontAsset::Register(U"BigFont", 60, Typeface::Heavy);
+    FontAsset::Register(U"ScoreFont", 30, Typeface::Bold);
+
     // シーンマネージャーを作成
     App manager;
 
