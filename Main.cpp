@@ -86,7 +86,15 @@ public:
     }
     //自機（円）を描画
     void draw() const{
-        circle.draw(Color(0, 0, 255));
+        if (invincible) {
+            //0.1秒点灯、0.1秒消灯で点滅
+            if (Periodic::Square0_1(0.2s)) {
+                circle.draw(Color(0, 0, 255));
+            }
+        }
+        else {
+            circle.draw(Color(0, 0, 255));
+        }
     }
 };
 
@@ -354,6 +362,9 @@ void CollisionDetection(EnemyManager* enemyManager, BulletManager* bulletManager
         }
         if ((it->circle).intersects(player->circle)) {
             player->life--;
+            //エフェクト
+            effect->add<Spark>(player->pos);
+            AudioAsset(U"explosion2").playOneShot();
             player->invincible = true;
             if (player->life <= 0) {
                 gameover = true;
@@ -376,6 +387,12 @@ void CollisionDetection(EnemyManager* enemyManager, BulletManager* bulletManager
                     if (it->hp <= 0) {
                         //エフェクト
                         effect->add<Spark>(it->pos);
+                        if (it->kind <= 3) {
+                            AudioAsset(U"explosion1").playOneShot();
+                        }
+                        else {
+                            AudioAsset(U"explosion3").playOneShot();
+                        }
                         hit = true;
                     }
                 }
@@ -411,6 +428,7 @@ void CollisionDetection(EnemyManager* enemyManager, BulletManager* bulletManager
             player->life -= 1;
             //エフェクト
             effect->add<Spark>(player->pos);
+            AudioAsset(U"explosion2").playOneShot();
             player->invincible = true;
             if (player->life <= 0) {
                 gameover = true;
@@ -440,6 +458,8 @@ public:
         : IScene(init)
     {
         stopwatch.restart();
+        AudioAsset(U"Main_BGM").setVolume(0.3);
+        AudioAsset(U"Main_BGM").play();
     }
 
     void update() override
@@ -457,8 +477,14 @@ public:
             stopwatch.restart();
             bossAppear = false;
             player.life = 3;
+            AudioAsset(U"gameover_BGM").stop();
+            AudioAsset(U"Main_BGM").setVolume(0.3);
+            AudioAsset(U"Main_BGM").play();
         }
-
+        //Tキーを押したらタイトルヘ
+        if (KeyT.down()) {
+            changeScene(U"Title");
+        }
         //スペースキーを押したらポーズ<->ポーズ解除
         if (KeySpace.down()) {
             isPause = !isPause;
@@ -473,7 +499,12 @@ public:
         //ゲームオーバー
         if (gameover) {
             stopwatch.pause();
-            if (MouseL.down()) {
+            AudioAsset(U"Main_BGM").stop();
+            AudioAsset(U"gameover_BGM").setVolume(0.3);
+            AudioAsset(U"gameover_BGM").play();
+            if (KeyT.down()) {
+                // 停止して再生位置を最初に戻す
+                AudioAsset(U"gameover_BGM").stop();
                 changeScene(U"Title");
             }
             return;
@@ -485,7 +516,9 @@ public:
             bulletManager.bullets.clear();
             enemyManager.enemybullets.clear();
             stopwatch.pause();
-            if (MouseL.down()) {
+            if (KeyT.down()) {
+                // 停止して再生位置を最初に戻す
+                AudioAsset(U"Main_BGM").stop();
                 changeScene(U"Title");
             }
         }
@@ -560,7 +593,8 @@ public:
         //ゲームクリア
         if (gameclear) {
             FontAsset(U"BigFont")(U"Game Clear!").drawAt(400, 250);
-            FontAsset(U"BigFont")(U"Click to back to title").drawAt(400, 350);
+            FontAsset(U"BigFont")(U"Press T to back to title").drawAt(400, 350);
+            FontAsset(U"BigFont")(U"Press R to retry").drawAt(400, 450);
             return;
         }
 
@@ -571,7 +605,7 @@ public:
         //ゲームオーバー
         if (gameover) {
             FontAsset(U"BigFont")(U"Game Over!").drawAt(400, 250);
-            FontAsset(U"BigFont")(U"Click to back to title").drawAt(400, 350);
+            FontAsset(U"BigFont")(U"Press T to back to title").drawAt(400, 350);
             FontAsset(U"BigFont")(U"Press R to retry").drawAt(400, 450);
         }
     }
@@ -590,6 +624,16 @@ void Main()
 
     // ゲームシーン（名前は U"Game"）を登録
     manager.add<Game>(U"Game");
+
+    // アセットの登録
+    AudioAsset::Register(U"Main_BGM", U"RAIN_&_Co_II_2.mp3");
+    AudioAsset::Register(U"explosion1", U"small_explosion1.mp3");
+    AudioAsset::Register(U"explosion2", U"small_explosion2.mp3");
+    AudioAsset::Register(U"explosion3", U"explosion3.mp3");
+    AudioAsset::Register(U"gameover_BGM", U"Endless_Nightmare.mp3");
+
+    AudioAsset(U"Main_BGM").setLoop(true);
+    AudioAsset(U"gameover_BGM").setLoop(true);
 
     while (System::Update()) {
         // 現在のシーンを実行
