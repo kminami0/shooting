@@ -24,6 +24,8 @@ public:
         gameclear = false;
         ClearPrint();
         Print << U"high score: " << getData().highscore; //ハイスコア表示
+        AudioAsset(U"title_BGM").setVolume(0.3);
+        AudioAsset(U"title_BGM").play();
     }
 
     // 更新関数
@@ -32,6 +34,7 @@ public:
         // 左クリックで
         if (MouseL.down())
         {
+            AudioAsset(U"title_BGM").stop();
             // ゲームシーンに遷移
             changeScene(U"Game");
         }
@@ -100,6 +103,27 @@ public:
 
 Stopwatch stopwatch;
 
+//アイテム
+class Item {
+public:
+    Vec2 pos;
+    Vec2 velocity; //アイテムの速度
+    int32 kind;
+
+    Item(Vec2 _pos, int32 _kind) :
+        pos(_pos),
+        velocity(Vec2(0, 0)),
+        kind(_kind)
+    {
+    }
+
+    void draw() const {
+        if (kind == 1) {
+
+        }
+    }
+};
+
 //敵
 class Enemy {
 public:
@@ -121,7 +145,7 @@ public:
 
     void update() {
         //敵の移動
-        if (kind == 1 || kind == 4) {
+        if (kind == 1) {
             double dx = pPlayer->pos.x - pos.x;
             double dy = pPlayer->pos.y - pos.y;
             velocity = Vec2(dx / pow(dx * dx + dy * dy, 0.5), dy / pow(dx * dx + dy * dy, 0.5));
@@ -136,6 +160,11 @@ public:
         }
         if (kind == 4) {
             velocity = RandomVec2(2);
+        }
+        if (kind == 5) {
+            double dx = pPlayer->pos.x - pos.x;
+            double dy = pPlayer->pos.y - pos.y;
+            velocity = Vec2(dx / pow(dx * dx + dy * dy, 0.5), dy / pow(dx * dx + dy * dy, 0.5)) + Vec2(sin(stopwatch.sF()), cos(stopwatch.sF()));
         }
         pos += velocity;
         circle = Circle(pos, 30.0);
@@ -153,6 +182,9 @@ public:
         }
         if (kind == 4) {
             Shape2D::Cross(80, 10, pos).draw(Palette::Skyblue);
+        }
+        if (kind == 5) {
+            Shape2D::Plus(80, 10, pos).draw(Palette::Teal);
         }
     }
 
@@ -210,14 +242,24 @@ public:
         //敵ショットの発射
         if (enemyShotTimer > enemyShotTime) {
             for (auto i : step(enemies.size())) {
-                if (enemies[i].kind != 4) {
+                if (enemies[i].kind <= 3) {
                     Vec2 vel = RandomVec2(5);
                     EnemyBullet enemybullet(enemies[i].pos + 6 * vel, vel);
                     enemybullets << enemybullet;
                 }
-                else {
+                else if (enemies[i].kind == 4) {
                     for (auto j : step(4)) {
                         Vec2 vel(5 * cos(j * 90_deg + 45_deg), 5 * sin(j * 90_deg + 45_deg));
+                        EnemyBullet enemybullet(enemies[i].pos + 16 * vel, vel);
+                        enemybullets << enemybullet;
+                    }
+                    Vec2 vel = RandomVec2(5);
+                    EnemyBullet enemybullet(enemies[i].pos, vel);
+                    enemybullets << enemybullet;
+                }
+                else if (enemies[i].kind == 5) {
+                    for (auto j : step(4)) {
+                        Vec2 vel(5 * cos(j * 90_deg), 5 * sin(j * 90_deg));
                         EnemyBullet enemybullet(enemies[i].pos + 16 * vel, vel);
                         enemybullets << enemybullet;
                     }
@@ -244,6 +286,15 @@ public:
 
     void add(Enemy enemy) {
         enemies << enemy;
+    }
+
+    int32 boss_hp() const{
+        for (auto i : step(enemies.size())) {
+            if (enemies[i].kind >= 4) {
+                return enemies[i].hp;
+            }
+        }
+        return -1;
     }
 };
 
@@ -401,7 +452,7 @@ void CollisionDetection(EnemyManager* enemyManager, BulletManager* bulletManager
                 }
             }
             if (hit) {
-                if (it->kind == 4) {
+                if (it->kind >= 4) {
                     *score += 100;
                     gameclear = true;
                 }
@@ -441,6 +492,8 @@ void CollisionDetection(EnemyManager* enemyManager, BulletManager* bulletManager
     }
     return;
 }
+
+int32 stage = 1;
 
 // ゲームシーン
 class Game : public App::Scene {
@@ -483,6 +536,7 @@ public:
         }
         //Tキーを押したらタイトルヘ
         if (KeyT.down()) {
+            AudioAsset(U"Main_BGM").stop();
             changeScene(U"Title");
         }
         //スペースキーを押したらポーズ<->ポーズ解除
@@ -516,18 +570,39 @@ public:
             bulletManager.bullets.clear();
             enemyManager.enemybullets.clear();
             stopwatch.pause();
+            AudioAsset(U"Main_BGM").stop();
+            AudioAsset(U"clear_BGM").setVolume(0.3);
+            AudioAsset(U"clear_BGM").play();
             if (KeyT.down()) {
-                // 停止して再生位置を最初に戻す
-                AudioAsset(U"Main_BGM").stop();
                 changeScene(U"Title");
+            }
+            if (KeyN.down()) {
+                stage++;
+                gameclear = false;
+                enemyManager.enemies.clear();
+                bulletManager.bullets.clear();
+                enemyManager.enemybullets.clear();
+                player.pos = Vec2(400, 300);
+                stopwatch.restart();
+                bossAppear = false;
+                AudioAsset(U"gameover_BGM").stop();
+                AudioAsset(U"Main_BGM").setVolume(0.3);
+                AudioAsset(U"Main_BGM").play();
             }
         }
 
         //ボス出現
         if (stopwatch.sF() > 25 && !bossAppear) {
-            Enemy boss(Vec2(400, 100), 4, 10);
-            boss.setPlayerPtr(&player);//ポインタを入れる
-            enemyManager.add(boss);
+            if (stage == 1) {
+                Enemy boss(Vec2(400, 100), 4, 10);
+                boss.setPlayerPtr(&player);//ポインタを入れる
+                enemyManager.add(boss);
+            }
+            if (stage == 2) {
+                Enemy boss(Vec2(400, 100), 5, 15);
+                boss.setPlayerPtr(&player);//ポインタを入れる
+                enemyManager.add(boss);
+            }
             bossAppear = true;
         }
 
@@ -588,13 +663,16 @@ public:
         Print << U"life: " << player.life; //残機表示
         //Print << U"enemy spawn time: " << enemySpawnTime;
         //Print << U"enemy shot timer: " << enemyShotTimer;
-       
+        if (bossAppear) {
+            Print << U"boss life: " << enemyManager.boss_hp();
+        }
 
         //ゲームクリア
         if (gameclear) {
             FontAsset(U"BigFont")(U"Game Clear!").drawAt(400, 250);
             FontAsset(U"BigFont")(U"Press T to back to title").drawAt(400, 350);
             FontAsset(U"BigFont")(U"Press R to retry").drawAt(400, 450);
+            FontAsset(U"BigFont")(U"Press N to go to next stage").drawAt(400, 550);
             return;
         }
 
@@ -631,9 +709,12 @@ void Main()
     AudioAsset::Register(U"explosion2", U"small_explosion2.mp3");
     AudioAsset::Register(U"explosion3", U"explosion3.mp3");
     AudioAsset::Register(U"gameover_BGM", U"Endless_Nightmare.mp3");
+    AudioAsset::Register(U"clear_BGM", U"jingle.mp3");
+    AudioAsset::Register(U"title_BGM", U"GI.mp3");
 
     AudioAsset(U"Main_BGM").setLoop(true);
     AudioAsset(U"gameover_BGM").setLoop(true);
+    AudioAsset(U"title_BGM").setLoop(true);
 
     while (System::Update()) {
         // 現在のシーンを実行
