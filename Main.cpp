@@ -109,17 +109,27 @@ public:
     Vec2 pos;
     Vec2 velocity; //アイテムの速度
     int32 kind;
+    Circle circle;
 
     Item(Vec2 _pos, int32 _kind) :
         pos(_pos),
         velocity(Vec2(0, 0)),
-        kind(_kind)
+        kind(_kind),
+        circle(pos, 10)
     {
+    }
+
+    void update() {
+        if (kind == 1) {
+            velocity = Vec2(sin(stopwatch.sF()), cos(stopwatch.sF()));
+        }
+        pos += velocity;
+        circle = Circle(pos, 30);
     }
 
     void draw() const {
         if (kind == 1) {
-
+            TextureAsset(U"heart").scaled(0.5).drawAt(pos);
         }
     }
 };
@@ -133,6 +143,8 @@ public:
     Circle circle;
     int32 kind;
     int32 hp;
+    Polygon cross;
+    Polygon plus;
 
     Enemy(Vec2 _pos, int32 _kind, int32 _hp) :
         pos(_pos),
@@ -168,6 +180,8 @@ public:
         }
         pos += velocity;
         circle = Circle(pos, 30.0);
+        cross = Shape2D::Cross(80, 10, pos);
+        plus = Shape2D::Plus(80, 10, pos);
     }
     //敵を描画
     void draw() const{
@@ -181,10 +195,10 @@ public:
             circle.draw(Color(255, 255, 0));
         }
         if (kind == 4) {
-            Shape2D::Cross(80, 10, pos).draw(Palette::Skyblue);
+            cross.draw(Palette::Skyblue);
         }
         if (kind == 5) {
-            Shape2D::Plus(80, 10, pos).draw(Palette::Teal);
+            plus.draw(Palette::Teal);
         }
     }
 
@@ -217,6 +231,34 @@ public:
     void draw() const{
         circle.draw(Color(0, 0, 0));
     }
+};
+
+class ItemManager {
+public:
+    Array<Item> items;
+
+    void update() {
+        for (auto i : step(items.size())) {
+            items[i].update();
+        }
+        //画面外のアイテムは消滅
+        items.remove_if([](Item e) {return e.pos.x > Scene::Width(); });
+        items.remove_if([](Item e) {return e.pos.x < 0; });
+        items.remove_if([](Item e) {return e.pos.y > Scene::Height(); });
+        items.remove_if([](Item e) {return e.pos.y < 0; });
+    }
+
+    void draw() const {
+        for (auto i : step(items.size())) {
+            items[i].draw();
+        }
+        
+    }
+
+    void add(Item item) {
+        items << item;
+    }
+
 };
 
 double enemyShotTime = 0.5; //敵ショットの間隔
@@ -401,6 +443,25 @@ struct Spark : IEffect
     }
 };
 
+//アイテム獲得判定
+void GetDetection(ItemManager* itemManager, Player* player) {
+    if (itemManager->items.isEmpty()) {
+        return;
+    }
+    
+    for (auto it = itemManager->items.begin(); it != itemManager->items.end();) {
+        if ((it->circle).intersects(player->circle)) {
+            player->life++;
+            itemManager->items.erase(it);
+            break;
+        }
+        else {
+            it++;
+        }
+    }
+    return;
+}
+
 //衝突判定
 void CollisionDetection(EnemyManager* enemyManager, BulletManager* bulletManager, Player* player, Effect* effect, int32* score, int32* highscore) {
     if (enemyManager->enemies.isEmpty()) {
@@ -411,7 +472,29 @@ void CollisionDetection(EnemyManager* enemyManager, BulletManager* bulletManager
         if (player->invincible) {
             break;
         }
-        if ((it->circle).intersects(player->circle)) {
+        if ((it->circle).intersects(player->circle) && it->kind <= 3) {
+            player->life--;
+            //エフェクト
+            effect->add<Spark>(player->pos);
+            AudioAsset(U"explosion2").playOneShot();
+            player->invincible = true;
+            if (player->life <= 0) {
+                gameover = true;
+            }
+            break;
+        }
+        else if ((it->cross).intersects(player->circle) && it->kind == 4) {
+            player->life--;
+            //エフェクト
+            effect->add<Spark>(player->pos);
+            AudioAsset(U"explosion2").playOneShot();
+            player->invincible = true;
+            if (player->life <= 0) {
+                gameover = true;
+            }
+            break;
+        }
+        else if ((it->plus).intersects(player->circle) && it->kind == 5) {
             player->life--;
             //エフェクト
             effect->add<Spark>(player->pos);
@@ -432,18 +515,33 @@ void CollisionDetection(EnemyManager* enemyManager, BulletManager* bulletManager
         bool hit = false;
         for (auto it = enemyManager->enemies.begin(); it != enemyManager->enemies.end();) {
             for (auto it2 = bulletManager->bullets.begin(); it2 != bulletManager->bullets.end();) {
-                if ((it->circle).intersects(it2->circle)) {
+                if ((it->circle).intersects(it2->circle) && it->kind <= 3) {
                     it->hp--;
                     it2 = bulletManager->bullets.erase(it2);
                     if (it->hp <= 0) {
                         //エフェクト
                         effect->add<Spark>(it->pos);
-                        if (it->kind <= 3) {
-                            AudioAsset(U"explosion1").playOneShot();
-                        }
-                        else {
-                            AudioAsset(U"explosion3").playOneShot();
-                        }
+                        AudioAsset(U"explosion1").playOneShot();
+                        hit = true;
+                    }
+                }
+                else if ((it->cross).intersects(it2->circle) && it->kind == 4) {
+                    it->hp--;
+                    it2 = bulletManager->bullets.erase(it2);
+                    if (it->hp <= 0) {
+                        //エフェクト
+                        effect->add<Spark>(it->pos);
+                        AudioAsset(U"explosion3").playOneShot();
+                        hit = true;
+                    }
+                }
+                else if ((it->plus).intersects(it2->circle) && it->kind == 5) {
+                    it->hp--;
+                    it2 = bulletManager->bullets.erase(it2);
+                    if (it->hp <= 0) {
+                        //エフェクト
+                        effect->add<Spark>(it->pos);
+                        AudioAsset(U"explosion3").playOneShot();
                         hit = true;
                     }
                 }
@@ -505,6 +603,9 @@ public:
     Effect effect;
     bool bossAppear = false;
     bool isPause = false;
+    ItemManager itemManager;
+    double itemSpawnTimer = 0; //アイテムの発生間隔タイマー
+    double itemSpawnTime = 10; //アイテムの発生間隔
 
     // コンストラクタ（必ず実装）
     Game(const InitData& init)
@@ -526,6 +627,7 @@ public:
             enemyManager.enemies.clear();
             bulletManager.bullets.clear();
             enemyManager.enemybullets.clear();
+            itemManager.items.clear();
             player.pos = Vec2(400, 300);
             stopwatch.restart();
             bossAppear = false;
@@ -569,6 +671,7 @@ public:
             enemyManager.enemies.clear();
             bulletManager.bullets.clear();
             enemyManager.enemybullets.clear();
+            itemManager.items.clear();
             stopwatch.pause();
             AudioAsset(U"Main_BGM").stop();
             AudioAsset(U"clear_BGM").setVolume(0.3);
@@ -609,9 +712,12 @@ public:
         player.update();
         enemyManager.update();
         bulletManager.update();
+        itemManager.update();
         CollisionDetection(&enemyManager, &bulletManager, &player, &effect, &getData().score, &getData().highscore);
+        GetDetection(&itemManager, &player);
         enemySpawnTimer += Scene::DeltaTime();
         enemyShotTimer += Scene::DeltaTime();
+        itemSpawnTimer += Scene::DeltaTime();
         if (player.invincible) {
             invincibleTimer += Scene::DeltaTime();
         }
@@ -620,6 +726,14 @@ public:
         if (invincibleTimer > invincibleTime) {
             player.invincible = false;
             invincibleTimer = 0;
+        }
+
+        //アイテムの発生
+        if (itemSpawnTimer > itemSpawnTime) {
+            //ランダムな位置にアイテムを作成
+            Item item(Vec2(Random(Scene::Width()), Random(Scene::Height())), 1);
+            itemManager.add(item);
+            itemSpawnTimer -= itemSpawnTime;
         }
 
         //敵の発生
@@ -663,6 +777,7 @@ public:
         Print << U"life: " << player.life; //残機表示
         //Print << U"enemy spawn time: " << enemySpawnTime;
         //Print << U"enemy shot timer: " << enemyShotTimer;
+        //Print << U"item spawn timer: " << itemSpawnTimer;
         if (bossAppear) {
             Print << U"boss life: " << enemyManager.boss_hp();
         }
@@ -679,6 +794,7 @@ public:
         player.draw();
         enemyManager.draw();
         bulletManager.draw();
+        itemManager.draw();
 
         //ゲームオーバー
         if (gameover) {
@@ -711,6 +827,8 @@ void Main()
     AudioAsset::Register(U"gameover_BGM", U"Endless_Nightmare.mp3");
     AudioAsset::Register(U"clear_BGM", U"jingle.mp3");
     AudioAsset::Register(U"title_BGM", U"GI.mp3");
+
+    TextureAsset::Register(U"heart", Emoji(U"💗"));
 
     AudioAsset(U"Main_BGM").setLoop(true);
     AudioAsset(U"gameover_BGM").setLoop(true);
