@@ -38,6 +38,15 @@ public:
             // ゲームシーンに遷移
             changeScene(U"Game");
         }
+
+
+        // Sキーで
+        if (KeyS.down())
+        {
+            AudioAsset(U"title_BGM").stop();
+            // ランキングシーンに遷移
+            changeScene(U"Ranking");
+        }
     }
 
     // 描画関数 (const 修飾)
@@ -47,6 +56,122 @@ public:
 
         FontAsset(U"BigFont")(U"Shooting Game").drawAt(400, 100);
         FontAsset(U"BigFont")(U"Click to start").drawAt(400, 300);
+        FontAsset(U"BigFont")(U"Press S to see the ranking").drawAt(400, 500);
+    }
+};
+
+//ランキングシーン
+class Ranking : public App::Scene
+{
+public:
+
+    // コンストラクタ（必ず実装）
+    Ranking(const InitData& init)
+        : IScene(init)
+    {
+        ClearPrint();
+        
+        // ランキングファイルをオープンする
+        TextReader reader(U"ranking.txt");
+
+        // オープンに失敗
+        if (!reader)
+        {
+            throw Error(U"Failed to open `ranking.txt`");
+        }
+
+        // 行の内容を読み込む変数
+        String line;
+        // 終端に達するまで 1 行ずつ読み込む
+        while (reader.readLine(line))
+        {
+            Print << line;
+        }
+        
+        Print << U"Press T to back to title";
+
+        AudioAsset(U"ranking_BGM").setVolume(0.3);
+        AudioAsset(U"ranking_BGM").play();
+    }
+
+    // 更新関数
+    void update() override
+    {
+        // Tキーで
+        if (KeyT.down())
+        {
+            AudioAsset(U"ranking_BGM").stop();
+            // タイトルシーンに遷移
+            changeScene(U"Title");
+        }
+    }
+
+    // 描画関数 (const 修飾)
+    void draw() const override
+    {
+        Scene::SetBackground(ColorF(0.3, 0.4, 0.5));
+
+    }
+};
+
+//スコア登録シーン
+class ScoreRegister : public App::Scene
+{
+public:
+    
+    String name;
+    bool regi = false;
+
+    // コンストラクタ（必ず実装）
+    ScoreRegister(const InitData& init)
+        : IScene(init)
+    {
+        ClearPrint();
+
+    }
+
+    // 更新関数
+    void update() override
+    {
+        // 右クリックで
+        if (MouseR.down())
+        {
+            AudioAsset(U"ranking_BGM").stop();
+            // タイトルシーンに遷移
+            changeScene(U"Title");
+        }
+
+        // キーボードから名前を入力
+        TextInput::UpdateText(name);
+
+        if (SimpleGUI::Button(U"Register", Vec2(100, 100)) && !regi)
+        {
+            // 追加モードでテキストファイルをオープン
+            TextWriter writer(U"ranking.txt", OpenMode::Append);
+            // オープンに失敗
+            if (!writer)
+            {
+                throw Error(U"Failed to open `ranking.txt`");
+            }
+            // 文章を追加する
+            writer << name << U" " << getData().score;
+            regi = true;
+        }
+        
+    }
+
+    // 描画関数 (const 修飾)
+    void draw() const override
+    {
+        Scene::SetBackground(ColorF(0.3, 0.4, 0.5));
+        
+        ClearPrint();
+
+        Print << U"Enter your name.";
+
+        Print << name;
+
+        Print << U"Right click to back to title";
     }
 };
 
@@ -606,6 +731,7 @@ public:
     ItemManager itemManager;
     double itemSpawnTimer = 0; //アイテムの発生間隔タイマー
     double itemSpawnTime = 10; //アイテムの発生間隔
+    bool regi = false; //ランキングにスコアを登録したか
 
     // コンストラクタ（必ず実装）
     Game(const InitData& init)
@@ -662,6 +788,11 @@ public:
                 // 停止して再生位置を最初に戻す
                 AudioAsset(U"gameover_BGM").stop();
                 changeScene(U"Title");
+            }
+           
+            if (KeyW.down()) {
+                AudioAsset(U"gameover_BGM").stop();
+                changeScene(U"ScoreRegister");
             }
             return;
         }
@@ -784,10 +915,10 @@ public:
 
         //ゲームクリア
         if (gameclear) {
-            FontAsset(U"BigFont")(U"Game Clear!").drawAt(400, 250);
-            FontAsset(U"BigFont")(U"Press T to back to title").drawAt(400, 350);
-            FontAsset(U"BigFont")(U"Press R to retry").drawAt(400, 450);
-            FontAsset(U"BigFont")(U"Press N to go to next stage").drawAt(400, 550);
+            FontAsset(U"BigFont")(U"Game Clear!").drawAt(400, 150);
+            FontAsset(U"BigFont")(U"Press T to back to title").drawAt(400, 250);
+            FontAsset(U"BigFont")(U"Press R to retry").drawAt(400, 350);
+            FontAsset(U"BigFont")(U"Press N to go to\nnext stage").drawAt(400, 500);
             return;
         }
 
@@ -798,9 +929,10 @@ public:
 
         //ゲームオーバー
         if (gameover) {
-            FontAsset(U"BigFont")(U"Game Over!").drawAt(400, 250);
-            FontAsset(U"BigFont")(U"Press T to back to title").drawAt(400, 350);
-            FontAsset(U"BigFont")(U"Press R to retry").drawAt(400, 450);
+            FontAsset(U"BigFont")(U"Game Over!").drawAt(400, 150);
+            FontAsset(U"BigFont")(U"Press T to back to title").drawAt(400, 250);
+            FontAsset(U"BigFont")(U"Press R to retry").drawAt(400, 350);
+            FontAsset(U"BigFont")(U"Press W to register").drawAt(400, 450);
         }
     }
 };
@@ -813,11 +945,12 @@ void Main()
     // シーンマネージャーを作成
     App manager;
 
-    // タイトルシーン（名前は U"Title"）を登録
+    // シーンの登録
     manager.add<Title>(U"Title");
-
-    // ゲームシーン（名前は U"Game"）を登録
     manager.add<Game>(U"Game");
+    manager.add<Ranking>(U"Ranking");
+    manager.add<ScoreRegister>(U"ScoreRegister");
+
 
     // アセットの登録
     AudioAsset::Register(U"Main_BGM", U"RAIN_&_Co_II_2.mp3");
@@ -827,6 +960,7 @@ void Main()
     AudioAsset::Register(U"gameover_BGM", U"Endless_Nightmare.mp3");
     AudioAsset::Register(U"clear_BGM", U"jingle.mp3");
     AudioAsset::Register(U"title_BGM", U"GI.mp3");
+    AudioAsset::Register(U"ranking_BGM", U"ranking_ranker.mp3");
 
     TextureAsset::Register(U"heart", Emoji(U"💗"));
 
