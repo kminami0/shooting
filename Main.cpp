@@ -35,6 +35,7 @@ public:
         if (MouseL.down())
         {
             AudioAsset(U"title_BGM").stop();
+            getData().score = 0;
             // ゲームシーンに遷移
             changeScene(U"Game");
         }
@@ -82,12 +83,36 @@ public:
 
         // 行の内容を読み込む変数
         String line;
+
+        Array<String> names;
+        Array<int32> scores;
+
+        Array<std::pair<int32, String>> ranking;
+        int32 cnt = 0;
+
         // 終端に達するまで 1 行ずつ読み込む
         while (reader.readLine(line))
         {
-            Print << line;
+            if (cnt % 2 == 0) {
+                scores << Parse<int32>(line);
+            }
+            else {
+                names << line;
+            }
+            cnt++;
         }
-        
+
+        for (auto i : step(cnt/2)) {
+            ranking << std::make_pair(scores[i], names[i]);
+        }
+
+        sort(ranking.begin(), ranking.end());
+        reverse(ranking.begin(), ranking.end());
+
+        for (auto i : step(cnt / 2)) {
+            Print << i+1 << U": " << ranking[i].second << U" " << ranking[i].first;
+        }
+
         Print << U"Press T to back to title";
 
         AudioAsset(U"ranking_BGM").setVolume(0.3);
@@ -154,7 +179,8 @@ public:
                 throw Error(U"Failed to open `ranking.txt`");
             }
             // 文章を追加する
-            writer << name << U" " << getData().score;
+            writer << getData().score;
+            writer << name;
             regi = true;
         }
         
@@ -170,6 +196,10 @@ public:
         Print << U"Enter your name.";
 
         Print << name;
+
+        if (regi) {
+            Print << U"You have successfully registered!";
+        }
 
         Print << U"Right click to back to title";
     }
@@ -539,6 +569,7 @@ struct Particle
     Vec2 velocity;
 };
 
+//https://siv3d.github.io/ja-jp/tutorial/effect/#164
 struct Spark : IEffect
 {
     Array<Particle> m_particles;
@@ -953,14 +984,14 @@ void Main()
 
 
     // アセットの登録
-    AudioAsset::Register(U"Main_BGM", U"RAIN_&_Co_II_2.mp3");
-    AudioAsset::Register(U"explosion1", U"small_explosion1.mp3");
-    AudioAsset::Register(U"explosion2", U"small_explosion2.mp3");
-    AudioAsset::Register(U"explosion3", U"explosion3.mp3");
-    AudioAsset::Register(U"gameover_BGM", U"Endless_Nightmare.mp3");
-    AudioAsset::Register(U"clear_BGM", U"jingle.mp3");
-    AudioAsset::Register(U"title_BGM", U"GI.mp3");
-    AudioAsset::Register(U"ranking_BGM", U"ranking_ranker.mp3");
+    AudioAsset::Register(U"Main_BGM", Resource(U"RAIN_&_Co_II_2.mp3"));
+    AudioAsset::Register(U"explosion1", Resource(U"small_explosion1.mp3"));
+    AudioAsset::Register(U"explosion2", Resource(U"small_explosion2.mp3"));
+    AudioAsset::Register(U"explosion3", Resource(U"explosion3.mp3"));
+    AudioAsset::Register(U"gameover_BGM", Resource(U"Endless_Nightmare.mp3"));
+    AudioAsset::Register(U"clear_BGM", Resource(U"jingle.mp3"));
+    AudioAsset::Register(U"title_BGM", Resource(U"GI.mp3"));
+    AudioAsset::Register(U"ranking_BGM", Resource(U"ranking_ranker.mp3"));
 
     TextureAsset::Register(U"heart", Emoji(U"💗"));
 

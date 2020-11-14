@@ -50,6 +50,14 @@ Resource(engine/objdetect/haarcascade/face_anime.xml.zstdcmp)
 Resource(engine/objdetect/haarcascade/frontal_catface.xml.zstdcmp)
 Resource(engine/objdetect/haarcascade/frontal_face_alt2.xml.zstdcmp)
 Resource(engine/soundfont/GMGSx.sf2.zstdcmp)
+Resource(RAIN_&_Co_II_2.mp3)
+Resource(small_explosion1.mp3)
+Resource(small_explosion2.mp3)
+Resource(explosion3.mp3)
+Resource(Endless_Nightmare.mp3)
+Resource(jingle.mp3)
+Resource(GI.mp3)
+Resource(ranking_ranker.mp3)
 
 //////////////////////////////////////////////////////
 //
